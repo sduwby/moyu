@@ -58,9 +58,62 @@ import {
 import './analytics'; // Analytics 函数挂载到 window
 import './achievementUI'; // Achievement UI 函数挂载到 window
 import { initThemeSystem, getCurrentTheme, applyTheme, initThemeUI } from './themeSystem';
+// --- 认证系统 ---
+import { checkAuth, showLoginUI, getCurrentUser } from './auth';
+import { apiClient } from './apiClient';
 
 // --- 类型定义 ---
 type InteractionMode = 'click' | 'type';
+
+// --- 启动时检查登录状态 ---
+(async () => {
+    const user = await checkAuth();
+    if (!user) {
+        // 未登录，显示登录界面
+        showLoginUI((loggedInUser) => {
+            console.log('User logged in:', loggedInUser.username);
+            // 登录成功后初始化游戏
+            initGame();
+        });
+    } else {
+        // 已登录，直接初始化游戏
+        console.log('User already logged in:', user.username);
+        initGame();
+    }
+})();
+
+function initGame() {
+
+// --- 辅助函数：提交分数到后端 ---
+async function submitScoreToBackend() {
+    try {
+        const mode = isInPracticeMode() ? 'practice' : 'normal';
+        const accuracy = calculateAccuracy();
+        const scoreData = {
+            score: currentScore,
+            mode,
+            duration: seconds,
+            max_combo: getComboCount(),
+            accuracy,
+            client_timestamp: new Date().toISOString(),
+            signature: generateScoreSignature(currentScore, seconds)
+        };
+        await apiClient.submitScore(scoreData);
+    } catch (error) {
+        console.error('Failed to submit score:', error);
+    }
+}
+
+function calculateAccuracy(): number {
+    const total = currentScore + missedCount;
+    return total > 0 ? currentScore / total : 1.0;
+}
+
+function generateScoreSignature(score: number, duration: number): string {
+    // 简单签名，实际应使用更复杂的算法
+    const data = `${score}_${duration}_${Date.now()}`;
+    return btoa(data); // Base64 编码
+}
 
 // 加载成就数据
 let achievementData: any = ACHIEVEMENT_STORE.load();
@@ -473,6 +526,10 @@ function triggerGameOver(): void {
     forceResetCombo(); //重置连击
     deleteSaveData(); // 清除存档
     onGameEnd(seconds, missedCount, achievementData, checkAndUnlockAchievement); // 调用成就系统钩子
+    
+    // 提交分数到后端
+    submitScoreToBackend();
+    
     gameOverScreen.style.display = 'block';
     const currentResultDiv = document.getElementById('current-result')!;
     
@@ -566,19 +623,33 @@ function updateSoundUI(): void {
 }
 
 // 静音按钮
-soundToggleBtn.addEventListener('click', () => {
+soundToggleBtn.addEventListener('click', async () => {
     soundSettings.enabled = !soundSettings.enabled;
     soundEffects.toggle();
     SOUND_SETTINGS_STORE.save(soundSettings);
     updateSoundUI();
+    
+    // 同步到后端
+    try {
+        await apiClient.updateSettings({ sound_enabled: soundSettings.enabled, sound_volume: soundSettings.volume });
+    } catch (error) {
+        console.error('Failed to sync sound settings:', error);
+    }
 });
 
 // 音量滑块
-volumeSlider.addEventListener('input', (e) => {
+volumeSlider.addEventListener('input', async (e) => {
     const volume = parseFloat((e.target as HTMLInputElement).value) / 100;
     soundSettings.volume = volume;
     soundEffects.setVolume(volume);
     SOUND_SETTINGS_STORE.save(soundSettings);
+    
+    // 同步到后端
+    try {
+        await apiClient.updateSettings({ sound_enabled: soundSettings.enabled, sound_volume: soundSettings.volume });
+    } catch (error) {
+        console.error('Failed to sync sound settings:', error);
+    }
 });
 
 // 初始化UI状态
@@ -639,3 +710,5 @@ setInterval(() => {
         checkAchievements(achievementData);
     }
 }, 500);
+
+} // initGame 函数结束

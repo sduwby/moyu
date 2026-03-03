@@ -1,8 +1,9 @@
-// --- 加密与文件存储 (AES-256-GCM + HMAC) ---
+// --- 混合存储：优先API，降级到本地文件 (AES-256-GCM + HMAC) ---
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
+import { apiClient } from './apiClient';
 
 const SECURE_STORE: any = {
     // 使用固定密钥派生（生产环境建议使用更安全的密钥管理）

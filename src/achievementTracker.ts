@@ -2,6 +2,7 @@
 import { ACHIEVEMENTS } from './achievements';
 import { ACHIEVEMENT_STORE } from './storage';
 import { soundEffects } from './soundEffects';
+import { apiClient } from './apiClient';
 
 let sessionStartTime = Date.now();
 let keyPressTimestamps: number[] = [];
@@ -48,6 +49,12 @@ export function checkAndUnlockAchievement(
         achievementState.progress = achievement.requirement || 100;
         
         ACHIEVEMENT_STORE.save(achievementData);
+        
+        // 同步到后端
+        apiClient.unlockAchievement(achievementId, {
+            stats: achievementData.stats,
+            timestamp: new Date().toISOString()
+        }).catch(err => console.error('Failed to sync achievement:', err));
         
         // 播放成就解锁音效
         soundEffects.playAchievement();
